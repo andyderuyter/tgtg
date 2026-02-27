@@ -333,7 +333,7 @@ class NtfyConfig(NotifierConfig):
     message: str = "${{display_name}} - New Amount: ${{items_available}} - ${{link}}"
     body: str | None = None
     priority: str = "default"
-    tags: str = "shopping,tgtg"
+    tags: str = "tgtg"
     click: str = "${{link}}"
     username: str | None = None
     password: str | None = None
