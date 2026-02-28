@@ -143,13 +143,13 @@ class Scanner:
 
             # Logic for New Stock
             if state_item.items_available != item.items_available:
-                log.info("%s - amount changed from %s to %s - price: %s", item.display_name, state_item.items_available, item.items_available, item.price)
+                log.info("%s - from %s to %s - (%s)", item.display_name, state_item.items_available, item.items_available, item.price)
                 if state_item.items_available == 0 and item.items_available > 0:
                     notification_reason = "NEW_STOCK"
 
             # Logic for Price Change
             if state_item.price != item.price:
-                log.info("%s - price changed from %s to %s - amount: %s", item.display_name, state_item.price, item.price, item.items_available)
+                log.info("%s - from %s to %s - (amount: %s)", item.display_name, state_item.price, item.price, item.items_available)
                 if self.config.price_monitoring and item.items_available > 0 and item._price < state_item._price:
                     # Only set if we haven't already flagged it as NEW_STOCK
                     if not notification_reason:
@@ -175,7 +175,7 @@ class Scanner:
         item.display_name = f"{tag} {original_name}"
 
         log.info(
-            "Sending %s notification for %s - %s bags available - price: %s",
+            "[%s] %s - %s bags available - price: %s",
             reason,
             item.display_name,
             item.items_available,
