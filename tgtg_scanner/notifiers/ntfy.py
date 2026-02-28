@@ -28,6 +28,7 @@ class Ntfy(WebHook):
         self.password = config.ntfy.password
         self.token = config.ntfy.token
         self.timeout = config.ntfy.timeout
+        self.icon = config.ntfy.icon
         self.cron = config.ntfy.cron
         self.headers = dict()
         self.auth = None
@@ -64,12 +65,14 @@ class Ntfy(WebHook):
             message = item.unmask(self.message).encode("utf-8")
             tags = item.unmask(self.tags).encode("utf-8")
             click = item.unmask(self.click).encode("utf-8")
+            icon = item.unmask(self.icon).encode("utf-8")
             self.headers |= {
                 "X-Title": title,
                 "X-Message": message,
                 "X-Priority": self.priority,
                 "X-Tags": tags,
                 "X-Click": click,
+                "X-Icon": icon,
             }
             super()._send(item)
 

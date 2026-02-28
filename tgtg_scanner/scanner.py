@@ -139,32 +139,53 @@ class Scanner:
         state_item = self.state.get(item.item_id)
         if state_item is not None:
             item._previous_price = state_item._price
-            send_notification = False
+            notification_reason = None # Track the reason here
+
+            # Logic for New Stock
             if state_item.items_available != item.items_available:
-                log.info("%s - amount changed from %s to %s", item.display_name, state_item.items_available, item.items_available)
-                if state_item.items_available == 0:
-                    send_notification = True
+                log.info("%s - amount changed from %s to %s - price: %s", item.display_name, state_item.items_available, item.items_available, item.price)
+                if state_item.items_available == 0 and item.items_available > 0:
+                    notification_reason = "NEW_STOCK"
+
+            # Logic for Price Change
             if state_item.price != item.price:
-                log.info("%s - price changed from %ss to %s", item.display_name, state_item.price, item.price)
+                log.info("%s - price changed from %s to %s - amount: %s", item.display_name, state_item.price, item.price, item.items_available)
                 if self.config.price_monitoring and item.items_available > 0 and item._price < state_item._price:
-                    send_notification = True
-            if send_notification:
-                self._send_messages(item)
+                    # Only set if we haven't already flagged it as NEW_STOCK
+                    if not notification_reason:
+                        notification_reason = "PRICE_DROP"
+
+            if notification_reason:
+                self._send_messages(item, notification_reason)
                 self.metrics.send_notifications.labels(item.item_id, item.display_name).inc()
+
         self.metrics.update(item)
         self.state[item.item_id] = item
 
-    def _send_messages(self, item: Item) -> None:
-        """Send notifications for Item."""
+    def _send_messages(self, item: Item, reason: str) -> None:
+        """Send notifications for Item with a specific reason tag."""
         if self.notifiers is None:
             raise RuntimeError("Notifiers not initialized!")
 
+        # 1. Add a visual tag based on the reason
+        tag = "🛍️" if reason == "NEW_STOCK" else "💰"
+        
+        # 2. Temporarily modify the display name so it shows up in notification template
+        original_name = item.display_name
+        item.display_name = f"{tag} {original_name}"
+
         log.info(
-            "Sending notifications for %s - %s bags available",
+            "Sending %s notification for %s - %s bags available - price: %s",
+            reason,
             item.display_name,
             item.items_available,
+            item.price,
         )
+        
         self.notifiers.send(item)
+
+        # 3. Restore the name so the internal state remains clean
+        item.display_name = original_name
 
     def run(self) -> NoReturn:
         """Main Loop of the Scanner."""
