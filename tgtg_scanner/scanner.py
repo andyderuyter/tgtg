@@ -182,10 +182,7 @@ class Scanner:
             item.price,
         )
         
-        try:
-            self.notifiers.send(item)
-        finally:
-            item.display_name = original_name
+        self.notifiers.send(item)
 
     def run(self) -> NoReturn:
         """Main Loop of the Scanner."""
