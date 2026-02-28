@@ -339,6 +339,7 @@ class NtfyConfig(NotifierConfig):
     password: str | None = None
     token: str | None = None
     timeout: int = 60
+    icon: str = "${{item_logo}}"  # Ntfy supports using a URL as an icon, so we can directly use the item logo here
 
     def _read_ini(self, parser: configparser.ConfigParser):
         self._ini_get_boolean(parser, "NTFY", "Enabled", "enabled")
@@ -355,6 +356,7 @@ class NtfyConfig(NotifierConfig):
         self._ini_get(parser, "NTFY", "Password", "password")
         self._ini_get(parser, "NTFY", "Token", "token")
         self._ini_get_int(parser, "NTFY", "Timeout", "timeout")
+        self._ini_get(parser, "NTFY", "Icon", "icon")
 
     def _read_env(self):
         self._env_get_boolean("NTFY", "enabled")
@@ -371,6 +373,7 @@ class NtfyConfig(NotifierConfig):
         self._env_get("NTFY_PASSWORD", "password")
         self._env_get("NTFY_TOKEN", "token")
         self._env_get_int("NTFY_TIMEOUT", "timeout")
+        self._env_get("NTFY_ICON", "icon")
 
 
 @dataclass
