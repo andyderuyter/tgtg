@@ -182,10 +182,10 @@ class Scanner:
             item.price,
         )
         
-        self.notifiers.send(item)
-
-        # 3. Restore the name so the internal state remains clean
-        item.display_name = original_name
+        try:
+            self.notifiers.send(item)
+        finally:
+            item.display_name = original_name
 
     def run(self) -> NoReturn:
         """Main Loop of the Scanner."""
