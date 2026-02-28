@@ -132,21 +132,22 @@ class Telegram(Notifier):
             self.application.add_handler(handler)
         await self.application.initialize()
         await self.application.updater.start_polling(allowed_updates=Update.ALL_TYPES, timeout=self.timeout, poll_interval=0.1)
+        await self.application.bot.delete_my_commands()
         await self.application.bot.set_my_commands(
             [
-                BotCommand("mute", "Deactivate Telegram Notifications for 1 or X days"),
-                BotCommand("unmute", "Reactivate Telegram Notifications"),
+                # BotCommand("mute", "Deactivate Telegram Notifications for 1 or X days"),
+                # BotCommand("unmute", "Reactivate Telegram Notifications"),
                 BotCommand("reserve", "Reserve the next available Magic Bag"),
-                BotCommand("reserveall", "Create Reservations for all Favorites"),
+                # BotCommand("reserveall", "Create Reservations for all Favorites"),
                 BotCommand("reservations", "List and cancel active Reservations"),
                 BotCommand("orders", "List and cancel active Orders"),
                 BotCommand("cancelallreservations", "Cancel all active Reservations"),
                 BotCommand("cancelallorders", "Cancel all active Orders"),
                 BotCommand("cancelall", "Cancel all active Reservations and Orders"),
-                BotCommand("listfavorites", "List all Favorites"),
-                BotCommand("listfavoriteids", "List all Item IDs from Favorites"),
-                BotCommand("addfavorites", "Add Item IDs to Favorites"),
-                BotCommand("removefavorites", "Remove Item IDs from Favorites"),
+                # BotCommand("listfavorites", "List all Favorites"),
+                # BotCommand("listfavoriteids", "List all Item IDs from Favorites"),
+                # BotCommand("addfavorites", "Add Item IDs to Favorites"),
+                # BotCommand("removefavorites", "Remove Item IDs from Favorites"),
                 BotCommand("getid", "Get your Chat ID"),
             ]
         )
