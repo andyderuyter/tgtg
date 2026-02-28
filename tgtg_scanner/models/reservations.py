@@ -30,7 +30,7 @@ class Reservations:
         self.active_orders: dict[str, Order] = {}
 
     def reserve(self, item_id: str, display_name: str, amount: int = 1) -> None:
-        """Create a new reservation.
+        """Create a new reservation or increase the amount in the existing reservation
 
         Args:
             item_id (str): Item ID
@@ -38,7 +38,12 @@ class Reservations:
             amount (int, optional): Amount. Defaults to 1.
 
         """
-        self.reservation_query.append(Reservation(item_id, amount, display_name))
+        for reservation in self.reservation_query:
+            if reservation.item_id == item_id:
+                reservation.amount += amount
+                break
+        else:
+            self.reservation_query.append(Reservation(item_id, amount, display_name))
 
     def make_orders(self, state: dict[str, Item], callback: Callable[[Reservation], None]) -> None:
         """Create orders for reservations.
@@ -52,10 +57,17 @@ class Reservations:
             item = state.get(reservation.item_id)
             if item and item.items_available > 0:
                 try:
+                    remaining_amount = reservation.amount
+                    reservation.amount = min(reservation.amount, item.items_available)
+                    remaining_amount -= reservation.amount
                     self._create_order(reservation)
-                    self.reservation_query.remove(reservation)
+                    if remaining_amount > 0:
+                        reservation.amount = remaining_amount
+                    else:
+                        self.reservation_query.remove(reservation)
                     callback(reservation)
                 except Exception as exc:
+                    reservation.amount += remaining_amount
                     log.warning("Order failed: %s", exc)
 
     def update_active_orders(self) -> None:
@@ -68,6 +80,10 @@ class Reservations:
     def cancel_order(self, order_id: str) -> None:
         """Cancel an order."""
         self.client.abort_order(order_id)
+
+    def cancel_all_reservations(self) -> None:
+        """Cancel all active reservations"""
+        self.reservation_query.clear()
 
     def cancel_all_orders(self) -> None:
         """Cancel all active orders."""
