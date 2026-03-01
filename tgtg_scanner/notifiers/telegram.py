@@ -320,7 +320,7 @@ class Telegram(Notifier):
             for item in favorites
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
-        await update.message.reply_text("Select a Bag to reserve", reply_markup=reply_markup)
+        await update.message.reply_text("Selecteer een pakket om te reserveren:", reply_markup=reply_markup)
 
     @_private
     async def _reserve_all_items(self, update: Update, _) -> None:
@@ -335,9 +335,7 @@ class Telegram(Notifier):
             [
                 InlineKeyboardButton(
                     Telegram._shorten_with_ellipsis(
-                        f"{reservation.display_name} ({reservation.amount} pakketten)"
-                        if reservation.amount > 1
-                        else reservation.display_name
+                        f"{reservation.amount}x {reservation.display_name}"
                     ),
                     callback_data=reservation,
                 )
@@ -357,7 +355,7 @@ class Telegram(Notifier):
             [
                 InlineKeyboardButton(
                     Telegram._shorten_with_ellipsis(
-                        f"{order.display_name} ({order.amount} pakketten)" if order.amount > 1 else order.display_name
+                        f"{order.amount}x {order.display_name}"
                     ),
                     callback_data=order,
                 )
@@ -374,20 +372,20 @@ class Telegram(Notifier):
     async def _cancel_all_reservations(self, update: Update, _) -> None:
         self.reservations.cancel_all_reservations()
         await update.message.reply_text("Cancelled all active Reservations")
-        log.debug("Cancelled all active Reservations")
+        log.info("Cancelled all active Reservations")
 
     @_private
     async def _cancel_all_orders(self, update: Update, _) -> None:
         self.reservations.cancel_all_orders()
         await update.message.reply_text("Cancelled all active Orders")
-        log.debug("Cancelled all active Orders")
+        log.info("Cancelled all active Orders")
 
     @_private
     async def _cancel_all(self, update: Update, _) -> None:
         self.reservations.cancel_all_reservations()
         self.reservations.cancel_all_orders()
         await update.message.reply_text("Cancelled all active Reservations and Orders")
-        log.debug("Cancelled all active Reservations and Orders")
+        log.info("Cancelled all active Reservations and Orders")
 
     @_private
     async def _list_favorites(self, update: Update, _) -> None:
@@ -555,7 +553,7 @@ class Telegram(Notifier):
             buttons = [
                 [InlineKeyboardButton(
                     Telegram._shorten_with_ellipsis(
-                        f"{order.display_name} ({order.amount} pakketten)" if order.amount > 1 else order.display_name
+                        f"{order.amount}x {order.display_name}"
                     ),
                     callback_data=order,
                 )]
