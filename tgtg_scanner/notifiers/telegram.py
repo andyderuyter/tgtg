@@ -231,31 +231,43 @@ class Telegram(Notifier):
             if self.image:
                 image = self._unmask_image(self.image, item)
         elif isinstance(item, Reservation):
+            full_item = self.favorites.get_item_by_id(item.item_id)
+            item_url = str(full_item.link) if full_item and full_item.link else "https://share.toogoodtogo.com/"
+
             message = escape_markdown(
                 (
-                    f"{item.display_name} ({item.amount} bags) are reserved for 5 minutes"
+                    f"{item.display_name} ({item.amount} pakketten) zijn gereserveerd voor 5 minuten"
                     if item.amount > 1
-                    else f"{item.display_name} is reserved for 5 minutes"
+                    else f"{item.display_name} (1 pakket) is gereserveerd voor 5 minuten"
                 ),
                 version=2,
             )
         else:
             return
-        await self._send_message(message, image)
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("👉 Open pakket in TGTG app", url=item_url)],
+            [InlineKeyboardButton("📦 Open orders om te verwijderen", callback_data="cmd:orders")]
+        ])
+        await self._send_message(message, image, reply_markup=keyboard)
+        log.info("Sent Telegram order notification for %s", item.display_name)
 
-    async def _send_message(self, message: str, image: bytes | None = None) -> None:
+    async def _send_message(self, message: str, image: bytes | None = None, reply_markup: InlineKeyboardMarkup | None = None) -> None:
         log.debug("%s message: %s", self.name, message)
         fmt = ParseMode.MARKDOWN_V2
         for chat_id in self.chat_ids:
             try:
                 if image:
-                    await self.application.bot.send_photo(chat_id=chat_id, photo=image, caption=message, parse_mode=fmt)
+                    await self.application.bot.send_photo(
+                        chat_id=chat_id, photo=image, caption=message,
+                        parse_mode=fmt, reply_markup=reply_markup
+                    )
                 else:
                     await self.application.bot.send_message(
                         chat_id=chat_id,
                         text=message,
                         parse_mode=fmt,
                         disable_web_page_preview=True,
+                        reply_markup=reply_markup,
                     )
                 self.retries = 0
             except BadRequest as err:
@@ -323,7 +335,7 @@ class Telegram(Notifier):
             [
                 InlineKeyboardButton(
                     Telegram._shorten_with_ellipsis(
-                        f"{reservation.display_name} ({reservation.amount} bags)"
+                        f"{reservation.display_name} ({reservation.amount} pakketten)"
                         if reservation.amount > 1
                         else reservation.display_name
                     ),
@@ -333,10 +345,10 @@ class Telegram(Notifier):
             for reservation in self.reservations.reservation_query
         ]
         if len(buttons) == 0:
-            await update.message.reply_text("No active Reservations")
+            await update.message.reply_text("Geen actieve reservaties.")
             return
         reply_markup = InlineKeyboardMarkup(buttons)
-        await update.message.reply_text("Active Reservations. Select to cancel.", reply_markup=reply_markup)
+        await update.message.reply_text("Actieve reservaties. Klik 1x om te annuleren.", reply_markup=reply_markup)
 
     @_private
     async def _cancel_orders_menu(self, update: Update, _) -> None:
@@ -345,7 +357,7 @@ class Telegram(Notifier):
             [
                 InlineKeyboardButton(
                     Telegram._shorten_with_ellipsis(
-                        f"{order.display_name} ({order.amount} bags)" if order.amount > 1 else order.display_name
+                        f"{order.display_name} ({order.amount} pakketten)" if order.amount > 1 else order.display_name
                     ),
                     callback_data=order,
                 )
@@ -353,10 +365,10 @@ class Telegram(Notifier):
             for order in self.reservations.active_orders.values()
         ]
         if len(buttons) == 0:
-            await update.message.reply_text("No active Orders")
+            await update.message.reply_text("Geen actieve orders.")
             return
         reply_markup = InlineKeyboardMarkup(buttons)
-        await update.message.reply_text("Active Orders. Select to cancel.", reply_markup=reply_markup)
+        await update.message.reply_text("Actieve orders. Klik 1x om te annuleren.", reply_markup=reply_markup)
 
     @_private
     async def _cancel_all_reservations(self, update: Update, _) -> None:
@@ -450,11 +462,11 @@ class Telegram(Notifier):
             return
 
         if not available_items:
-            await update.message.reply_text("Currently no available bags in your favorites\.")
+            await update.message.reply_text("Er zijn momenteel geen beschikbare pakketten in je favorieten\.")
             return
 
         # Header message to start the overview
-        await update.message.reply_text("*Available Offers Overview*:", parse_mode=ParseMode.MARKDOWN_V2)
+        await update.message.reply_text("*Beschikbare favoriete pakketten*:", parse_mode=ParseMode.MARKDOWN_V2)
 
         for item in available_items:
             # 1. Format and Escape
@@ -474,7 +486,7 @@ class Telegram(Notifier):
 
             # 3. Create the Keyboard
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(text="👉 Open in TGTG App", url=item_url)]
+                [InlineKeyboardButton(text="👉 Open pakket in TGTG app", url=item_url)]
             ])
 
             # 4. Send immediately inside the loop
@@ -536,22 +548,43 @@ class Telegram(Notifier):
 
     async def _callback_query_handler(self, update: Update, _) -> None:
         data = update.callback_query.data
+        # Handle command shortcut buttons
+        if data == "cmd:orders":
+            await update.callback_query.answer()
+            self.reservations.update_active_orders()
+            buttons = [
+                [InlineKeyboardButton(
+                    Telegram._shorten_with_ellipsis(
+                        f"{order.display_name} ({order.amount} pakketten)" if order.amount > 1 else order.display_name
+                    ),
+                    callback_data=order,
+                )]
+                for order in self.reservations.active_orders.values()
+            ]
+            if not buttons:
+                await update.callback_query.message.reply_text("Geen actieve orders.")
+            else:
+                await update.callback_query.message.reply_text(
+                    "Actieve orders. Klik 1x om te annuleren.",
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
+            return
         if isinstance(data, Item):
             self.reservations.reserve(data.item_id, data.display_name)
-            await update.callback_query.answer(f"Added {data.display_name} to Reservation queue")
-            log.debug('Added "%s" to reservation queue', data.display_name)
+            await update.callback_query.answer(f"{data.display_name} toegevoegd aan reservatie wachtrij")
+            log.info('Added "%s" to reservation queue', data.display_name)
         if isinstance(data, Reservation):
             self.reservations.reservation_query.remove(data)
-            await update.callback_query.answer(f"Removed {data.display_name} from Reservation queue")
-            log.debug('Removed "%s" from reservation queue', data.display_name)
+            await update.callback_query.answer(f"{data.display_name} verwijderd uit reservatie wachtrij")
+            log.info('Removed "%s" from reservation queue', data.display_name)
         if isinstance(data, Order):
             self.reservations.cancel_order(data.id)
-            await update.callback_query.answer(f"Canceled Order for {data.display_name}")
-            log.debug('Canceled order for "%s"', data.display_name)
+            await update.callback_query.answer(f"Order geannuleerd voor {data.display_name}")
+            log.info('Canceled order for "%s"', data.display_name)
         if isinstance(data, AddFavoriteRequest):
             if data.proceed:
                 self.favorites.add_favorites([data.item_id])
-                await update.callback_query.edit_message_text(f"Added {data.item_display_name} to Favorites")
+                await update.callback_query.edit_message_text(f"Toegevoegd {data.item_display_name} aan favorieten")
                 log.debug('Added "%s" to favorites', data.item_display_name)
                 log.debug('Removed "%s" from favorites', data.item_display_name)
             else:
