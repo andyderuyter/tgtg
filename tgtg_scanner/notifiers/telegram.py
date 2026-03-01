@@ -217,60 +217,45 @@ class Telegram(Notifier):
         return None
 
     async def _send(self, item: Item | Reservation) -> None:  # type: ignore[override]
-        """Send item information as Telegram message with action buttons."""
+        """Send item information as Telegram message.
+
+        Reservation notifications are always send.
+        Disable Item notification with mute or only_reservations config.
+        """
         if self.mute and self.mute < datetime.datetime.now():
             log.info("Reactivated Telegram Notifications")
             self.mute = None
-        
         image = None
-        reply_markup = None # Initialize markup
-
         if isinstance(item, Item) and not self.only_reservations and not self.mute:
             message = self._unmask(self.body, item)
             if self.image:
                 image = self._unmask_image(self.image, item)
-        
         elif isinstance(item, Reservation):
-            # 1. Format the reservation message
-            message_text = (
-                f"{item.display_name} ({item.amount} bags) are reserved for 5 minutes"
-                if item.amount > 1
-                else f"{item.display_name} is reserved for 5 minutes"
+            message = escape_markdown(
+                (
+                    f"{item.display_name} ({item.amount} bags) are reserved for 5 minutes"
+                    if item.amount > 1
+                    else f"{item.display_name} is reserved for 5 minutes"
+                ),
+                version=2,
             )
-            message = escape_markdown(message_text, version=2)
-            
-            # 2. Add the "Release/Drop" button
-            # We pass the 'item' (Reservation object) as callback_data
-            reply_markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔓 Release / Drop Order", callback_data=item)]
-            ])
-            
         else:
             return
+        await self._send_message(message, image)
 
-        # Pass the reply_markup to the sending function
-        await self._send_message(message, image, reply_markup)
-
-    async def _send_message(self, message: str, image: bytes | None = None, reply_markup: InlineKeyboardMarkup | None = None) -> None:
+    async def _send_message(self, message: str, image: bytes | None = None) -> None:
         log.debug("%s message: %s", self.name, message)
         fmt = ParseMode.MARKDOWN_V2
         for chat_id in self.chat_ids:
             try:
                 if image:
-                    await self.application.bot.send_photo(
-                        chat_id=chat_id, 
-                        photo=image, 
-                        caption=message, 
-                        parse_mode=fmt,
-                        reply_markup=reply_markup
-                    )
+                    await self.application.bot.send_photo(chat_id=chat_id, photo=image, caption=message, parse_mode=fmt)
                 else:
                     await self.application.bot.send_message(
                         chat_id=chat_id,
                         text=message,
                         parse_mode=fmt,
                         disable_web_page_preview=True,
-                        reply_markup=reply_markup
                     )
                 self.retries = 0
             except BadRequest as err:
@@ -283,8 +268,7 @@ class Telegram(Notifier):
                 self.retries += 1
                 if self.retries > Telegram.MAX_RETRIES:
                     raise err
-                # Ensure retries maintain the image and buttons
-                await self._send_message(message, image, reply_markup)
+                await self._send_message(message)
             except TelegramError as err:
                 log.error("Telegram Error: %s", err)
 
