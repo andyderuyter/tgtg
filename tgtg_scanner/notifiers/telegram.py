@@ -118,6 +118,7 @@ class Telegram(Notifier):
             CommandHandler("listfavoriteids", self._list_favorite_ids),
             CommandHandler("addfavorites", self._add_favorites),
             CommandHandler("removefavorites", self._remove_favorites),
+            CommandHandler("offers", self._offers_overview),
             CommandHandler("getid", self._get_id),
             MessageHandler(
                 filters.Regex(r"^https:\/\/share\.toogoodtogo\.com\/item\/(\d+)\/?"),
@@ -148,6 +149,7 @@ class Telegram(Notifier):
                 # BotCommand("listfavoriteids", "List all Item IDs from Favorites"),
                 # BotCommand("addfavorites", "Add Item IDs to Favorites"),
                 # BotCommand("removefavorites", "Remove Item IDs from Favorites"),
+                BotCommand("offers", "Show current favorite offers"),
                 BotCommand("getid", "Get your Chat ID"),
             ]
         )
@@ -436,6 +438,51 @@ class Telegram(Notifier):
         self.favorites.remove_favorite(item_ids)
         await update.message.reply_text(f"Removed the following Item IDs from Favorites: {' '.join(item_ids)}")
         log.debug("Removed the following Item IDs from Favorites: '%s'", item_ids)
+
+    @_private
+    async def _offers_overview(self, update: Update, _) -> None:
+        """Sends each available offer as an individual message with a button."""
+        favorites = self.favorites.get_favorites()
+        available_items = [item for item in favorites if item.items_available > 0]
+        
+        if not favorites:
+            await update.message.reply_text("You don't have any favorites saved\.")
+            return
+
+        if not available_items:
+            await update.message.reply_text("Currently no available bags in your favorites\.")
+            return
+
+        # Header message to start the overview
+        await update.message.reply_text("*Available Offers Overview*:", parse_mode=ParseMode.MARKDOWN_V2)
+
+        for item in available_items:
+            # 1. Format and Escape
+            name = escape_markdown(str(item.display_name), version=2)
+            stock = item.items_available
+            price = escape_markdown(f"{item.price} ({item.value})", version=2)
+            pickup = escape_markdown(str(item.pickupdate) if item.pickupdate else "Not available", version=2)
+            item_url = str(item.link)
+
+            # 2. Build Message String
+            message = (
+                f"🛍️ *{name}*\n"
+                f" ├ Aantal: {stock}\n"
+                f" ├ Prijs: {price}\n"
+                f" └ Ophalen: {pickup}"
+            )
+
+            # 3. Create the Keyboard
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(text="👉 Open in TGTG App", url=item_url)]
+            ])
+
+            # 4. Send immediately inside the loop
+            await update.message.reply_text(
+                message, 
+                parse_mode=ParseMode.MARKDOWN_V2,
+                reply_markup=keyboard
+            )
 
     @_private
     async def _url_handler(self, update: Update, context: CallbackContext) -> None:
