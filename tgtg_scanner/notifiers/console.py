@@ -26,7 +26,7 @@ class Console(Notifier):
     def _send(self, item: Item | Reservation) -> None:
         if isinstance(item, Item):
             message = item.unmask(self.body)
-            print(message)
+            log.info(message)
 
     def __repr__(self) -> str:
         return "Console stdout"

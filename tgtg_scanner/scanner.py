@@ -22,14 +22,55 @@ from tgtg_scanner.tgtg import TgtgClient
 log = logging.getLogger("tgtg")
 
 
+class SpinnerAwareHandler(logging.Handler):
+    """Log handler that clears the spinner line before other handlers emit,
+    then redraws the spinner prefix after — no duplication."""
+
+    def __init__(self, activity: "Activity"):
+        super().__init__()
+        self.activity = activity
+        self._inside_emit = False
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if not self.activity.spinner or self._inside_emit:
+            return
+        self._inside_emit = True
+        try:
+            # Clear the spinner line before the other handlers write
+            sys.stdout.write("\x1b[80D\x1b[K")
+            sys.stdout.flush()
+        finally:
+            self._inside_emit = False
+
+    def redraw(self) -> None:
+        """Redraw the spinner prefix after other handlers have written."""
+        if self.activity.spinner:
+            sys.stdout.write("Scanning... ")
+            sys.stdout.flush()
+
+
 class Activity:
     """Activity class that creates a spinner if active is True."""
 
     def __init__(self, active: bool):
         self.active = active
         self.spinner = None
+        self._handler: SpinnerAwareHandler | None = None
         if self.active:
             self.spinner = Spinner("Scanning... ")
+            self._handler = SpinnerAwareHandler(self)
+            self._filter = None
+            log.addHandler(self._handler)
+
+            # Patch callHandlers on the tgtg logger to redraw spinner after all handlers fire
+            _original_call_handlers = log.callHandlers
+
+            def _patched_call_handlers(record: logging.LogRecord) -> None:
+                _original_call_handlers(record)
+                self._handler.redraw()
+
+            log.callHandlers = _patched_call_handlers
+            self._restore_call_handlers = _original_call_handlers
 
     def next(self) -> None:
         """Next function that updates the spinner."""
@@ -41,6 +82,14 @@ class Activity:
         if self.spinner:
             sys.stdout.write("\x1b[80D\x1b[K")
             sys.stdout.flush()
+
+    def stop(self) -> None:
+        """Remove the log handler and restore callHandlers when spinner stops."""
+        if self._handler:
+            log.removeHandler(self._handler)
+            self._handler = None
+        if hasattr(self, "_restore_call_handlers"):
+            log.callHandlers = self._restore_call_handlers
 
 
 class Scanner:
@@ -212,7 +261,8 @@ class Scanner:
         running = True
         if self.cron != Cron("* * * * *"):
             log.info("Active on schedule: %s", self.cron.get_description(self.config.locale))
-        activity = Activity(self.config.activity and not (self.config.docker or self.config.quiet))
+        self._activity = Activity(self.config.activity and not (self.config.docker or self.config.quiet))
+        activity = self._activity
         while True:
             if self.cron.is_now:
                 if not running:
@@ -238,6 +288,8 @@ class Scanner:
         """Stop scanner."""
         if self.notifiers:
             self.notifiers.stop()
+        if hasattr(self, "_activity"):
+            self._activity.stop()
 
     def get_credentials(self) -> dict:
         """Returns current tgtg credentials.
