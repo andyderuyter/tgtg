@@ -175,7 +175,7 @@ class Scanner:
         item.display_name = f"{tag} {original_name}"
 
         log.info(
-            "[%s] %s - %s bags available - price: %s",
+            "[%s] %s - %s st. (%s)",
             reason,
             item.display_name,
             item.items_available,
