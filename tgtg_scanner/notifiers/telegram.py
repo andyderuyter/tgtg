@@ -546,6 +546,10 @@ class Telegram(Notifier):
 
     async def _callback_query_handler(self, update: Update, _) -> None:
         data = update.callback_query.data
+        # Ignore clicks on already-processed buttons
+        if data == "noop":
+            await update.callback_query.answer()
+            return
         # Handle command shortcut buttons
         if data == "cmd:orders":
             await update.callback_query.answer()
@@ -572,12 +576,44 @@ class Telegram(Notifier):
             await update.callback_query.answer(f"{data.display_name} toegevoegd aan reservatie wachtrij")
             log.info('Added "%s" to reservation queue', data.display_name)
         if isinstance(data, Reservation):
+            await update.callback_query.answer(f"⏳ Bezig met annuleren...")
+            await update.callback_query.edit_message_reply_markup(
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        Telegram._shorten_with_ellipsis(f"⏳ {data.amount}x {data.display_name}"),
+                        callback_data=data,
+                    )]
+                ])
+            )
             self.reservations.reservation_query.remove(data)
-            await update.callback_query.answer(f"{data.display_name} verwijderd uit reservatie wachtrij")
+            await update.callback_query.edit_message_reply_markup(
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        Telegram._shorten_with_ellipsis(f"✅ {data.amount}x {data.display_name} — geannuleerd"),
+                        callback_data="noop",
+                    )]
+                ])
+            )
             log.info('Removed "%s" from reservation queue', data.display_name)
         if isinstance(data, Order):
+            await update.callback_query.answer(f"⏳ Bezig met annuleren...")
+            await update.callback_query.edit_message_reply_markup(
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        Telegram._shorten_with_ellipsis(f"⏳ {data.amount}x {data.display_name}"),
+                        callback_data=data,
+                    )]
+                ])
+            )
             self.reservations.cancel_order(data.id)
-            await update.callback_query.answer(f"Order geannuleerd voor {data.display_name}")
+            await update.callback_query.edit_message_reply_markup(
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        Telegram._shorten_with_ellipsis(f"✅ {data.amount}x {data.display_name} — geannuleerd"),
+                        callback_data="noop",
+                    )]
+                ])
+            )
             log.info('Canceled order for "%s"', data.display_name)
         if isinstance(data, AddFavoriteRequest):
             if data.proceed:
@@ -643,3 +679,4 @@ class Telegram(Notifier):
         else:
             slice_size = (length - 3) // 2
             return text[:slice_size] + "..." + text[-slice_size:]
+        
