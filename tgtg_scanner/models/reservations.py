@@ -68,7 +68,7 @@ class Reservations:
                     callback(reservation)
                 except Exception as exc:
                     reservation.amount += remaining_amount
-                    log.warning("Order failed: %s", exc)
+                    log.warning("Order failed for '%s': %s", reservation.display_name, exc)
 
     def update_active_orders(self) -> None:
         """Remove orders that are not active anymore."""
