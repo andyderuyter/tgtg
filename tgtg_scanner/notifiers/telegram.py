@@ -217,39 +217,49 @@ class Telegram(Notifier):
         return None
 
     async def _send(self, item: Item | Reservation) -> None:  # type: ignore[override]
-        """Send item information as Telegram message.
-
-        Reservation notifications are always send.
-        Disable Item notification with mute or only_reservations config.
-        """
+        """Send item information as Telegram message."""
         if self.mute and self.mute < datetime.datetime.now():
             log.info("Reactivated Telegram Notifications")
             self.mute = None
+
         image = None
+        reply_markup = None # Initialize as None
+
         if isinstance(item, Item) and not self.only_reservations and not self.mute:
             message = self._unmask(self.body, item)
             if self.image:
                 image = self._unmask_image(self.image, item)
+            
         elif isinstance(item, Reservation):
-            full_item = self.favorites.get_item_by_id(item.item_id)
-            item_url = str(full_item.link) if full_item and full_item.link else "https://share.toogoodtogo.com/"
+            if item.amount <= 0:
+                message = escape_markdown(str(item.display_name), version=2)
+            else:
+                # SUCCESSFUL ORDER LOGIC
+                full_item = self.favorites.get_item_by_id(item.item_id)
+                item_url = str(full_item.link) if full_item and full_item.link else "https://share.toogoodtogo.com/"
 
-            message = escape_markdown(
-                (
-                    f"{item.display_name} ({item.amount} pakketten) zijn gereserveerd voor 5 minuten"
-                    if item.amount > 1
-                    else f"{item.display_name} (1 pakket) is gereserveerd voor 5 minuten"
-                ),
-                version=2,
-            )
+                message = escape_markdown(
+                    (
+                        f"{item.display_name} ({item.amount} pakketten) zijn gereserveerd voor 5 minuten"
+                        if item.amount > 1
+                        else f"{item.display_name} (1 pakket) is gereserveerd voor 5 minuten"
+                    ),
+                    version=2,
+                )
+                
+                # Only create the keyboard if it is a successful Reservation
+                reply_markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("👉 Open pakket in TGTG app", url=item_url)],
+                    [InlineKeyboardButton("📦 Open orders om te verwijderen", callback_data="cmd:orders")]
+                ])
         else:
             return
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👉 Open pakket in TGTG app", url=item_url)],
-            [InlineKeyboardButton("📦 Open orders om te verwijderen", callback_data="cmd:orders")]
-        ])
-        await self._send_message(message, image, reply_markup=keyboard)
-        log.info("Sent Telegram order notification for %s", item.display_name)
+
+        # Pass the reply_markup (which will be None for standard Item notifications)
+        await self._send_message(message, image, reply_markup=reply_markup)
+        
+        if isinstance(item, Reservation) and item.amount > 0:
+            log.info("Sent Telegram order notification for %s", item.display_name)
 
     async def _send_message(self, message: str, image: bytes | None = None, reply_markup: InlineKeyboardMarkup | None = None) -> None:
         log.debug("%s message: %s", self.name, message)

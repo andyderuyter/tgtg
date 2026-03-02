@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -67,8 +68,55 @@ class Reservations:
                         self.reservation_query.remove(reservation)
                     callback(reservation)
                 except Exception as exc:
+                    # Restore reservation amount
                     reservation.amount += remaining_amount
-                    log.warning("Order failed for '%s': %s", reservation.display_name, exc)
+                    log.info("Order failed for '%s': %s", reservation.display_name, exc)
+
+                    # Try to build a short, human-friendly error message. The TGTG client
+                    # raises TgtgAPIError(status_code, content_bytes) so try to extract
+                    # the HTTP status and the JSON "state" field when available.
+                    short_msg = None
+                    try:
+                        args = getattr(exc, "args", ()) or ()
+                        if len(args) >= 2:
+                            status = args[0]
+                            content = args[1]
+                            if isinstance(content, (bytes, bytearray)):
+                                try:
+                                    content_str = content.decode("utf-8")
+                                except Exception:
+                                    content_str = repr(content)
+                            else:
+                                content_str = str(content)
+
+                            try:
+                                parsed = json.loads(content_str)
+                                state = parsed.get("state")
+                                if state:
+                                    short_msg = f"{state} ({status})"
+                                else:
+                                    short_msg = f"{status}: {content_str}"
+                            except Exception:
+                                short_msg = f"{status}: {content_str}"
+                        else:
+                            short_msg = str(exc)
+                    except Exception:
+                        short_msg = str(exc)
+
+                    # Notify via callback about the failure so notifiers (e.g., Telegram) get informed
+                    try:
+                        failure_res = Reservation(
+                            reservation.item_id,
+                            0,
+                            f"Order failed for {reservation.display_name}: {short_msg}",
+                        )
+                        callback(failure_res)
+                    except Exception as notify_exc:
+                        log.info(
+                            "Failed to send failure notification for '%s': %s",
+                            reservation.display_name,
+                            notify_exc,
+                        )
 
     def update_active_orders(self) -> None:
         """Remove orders that are not active anymore."""
