@@ -553,7 +553,6 @@ class Telegram(Notifier):
         # Handle command shortcut buttons
         if data == "cmd:orders":
             await update.callback_query.answer()
-            # Show loading state on the button while fetching orders
             original_markup = update.callback_query.message.reply_markup
             await update.callback_query.edit_message_reply_markup(
                 reply_markup=InlineKeyboardMarkup([
@@ -569,7 +568,6 @@ class Telegram(Notifier):
                 )]
                 for order in self.reservations.active_orders.values()
             ]
-            # Restore original buttons
             await update.callback_query.edit_message_reply_markup(reply_markup=original_markup)
             if not buttons:
                 await update.callback_query.message.reply_text("Geen actieve orders.")
@@ -584,45 +582,92 @@ class Telegram(Notifier):
             await update.callback_query.answer(f"{data.display_name} toegevoegd aan reservatie wachtrij")
             log.info('Added "%s" to reservation queue', data.display_name)
         if isinstance(data, Reservation):
-            await update.callback_query.answer(f"⏳ Bezig met annuleren...")
+            await update.callback_query.answer("⏳ Bezig met annuleren...")
+            all_reservations = list(self.reservations.reservation_query)
             await update.callback_query.edit_message_reply_markup(
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton(
-                        Telegram._shorten_with_ellipsis(f"⏳ {data.amount}x {data.display_name}"),
-                        callback_data=data,
+                        Telegram._shorten_with_ellipsis(f"⏳ {r.amount}x {r.display_name}" if r.item_id == data.item_id else f"{r.amount}x {r.display_name}"),
+                        callback_data="noop" if r.item_id == data.item_id else r,
                     )]
+                    for r in all_reservations
                 ])
             )
             self.reservations.reservation_query.remove(data)
+            remaining = list(self.reservations.reservation_query)
             await update.callback_query.edit_message_reply_markup(
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton(
                         Telegram._shorten_with_ellipsis(f"✅ {data.amount}x {data.display_name} — geannuleerd"),
                         callback_data="noop",
-                    )]
+                    )],
+                    *[
+                        [InlineKeyboardButton(
+                            Telegram._shorten_with_ellipsis(f"{r.amount}x {r.display_name}"),
+                            callback_data=r,
+                        )]
+                        for r in remaining
+                    ],
                 ])
             )
             log.info('Removed "%s" from reservation queue', data.display_name)
+            await asyncio.sleep(1)
+            if remaining:
+                await update.callback_query.edit_message_reply_markup(
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(
+                            Telegram._shorten_with_ellipsis(f"{r.amount}x {r.display_name}"),
+                            callback_data=r,
+                        )]
+                        for r in remaining
+                    ])
+                )
+            else:
+                await update.callback_query.edit_message_text("Geen actieve reservaties.")
         if isinstance(data, Order):
-            await update.callback_query.answer(f"⏳ Bezig met annuleren...")
+            await update.callback_query.answer("⏳ Bezig met annuleren...")
+            all_orders = list(self.reservations.active_orders.values())
             await update.callback_query.edit_message_reply_markup(
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton(
-                        Telegram._shorten_with_ellipsis(f"⏳ {data.amount}x {data.display_name}"),
-                        callback_data=data,
+                        Telegram._shorten_with_ellipsis(f"⏳ {o.amount}x {o.display_name}" if o.id == data.id else f"{o.amount}x {o.display_name}"),
+                        callback_data="noop" if o.id == data.id else o,
                     )]
+                    for o in all_orders
                 ])
             )
             self.reservations.cancel_order(data.id)
+            self.reservations.update_active_orders()
+            remaining_orders = list(self.reservations.active_orders.values())
             await update.callback_query.edit_message_reply_markup(
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton(
                         Telegram._shorten_with_ellipsis(f"✅ {data.amount}x {data.display_name} — geannuleerd"),
                         callback_data="noop",
-                    )]
+                    )],
+                    *[
+                        [InlineKeyboardButton(
+                            Telegram._shorten_with_ellipsis(f"{o.amount}x {o.display_name}"),
+                            callback_data=o,
+                        )]
+                        for o in remaining_orders
+                    ],
                 ])
             )
             log.info('Canceled order for "%s"', data.display_name)
+            await asyncio.sleep(1)
+            if remaining_orders:
+                await update.callback_query.edit_message_reply_markup(
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(
+                            Telegram._shorten_with_ellipsis(f"{o.amount}x {o.display_name}"),
+                            callback_data=o,
+                        )]
+                        for o in remaining_orders
+                    ])
+                )
+            else:
+                await update.callback_query.edit_message_text("Geen actieve orders.")
         if isinstance(data, AddFavoriteRequest):
             if data.proceed:
                 self.favorites.add_favorites([data.item_id])
